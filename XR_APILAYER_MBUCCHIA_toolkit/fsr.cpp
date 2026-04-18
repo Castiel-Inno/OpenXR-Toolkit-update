@@ -81,32 +81,33 @@ namespace {
             const auto outputHeight = output->getInfo().height;
             const float sharpness = m_configManager->getValue(SettingSharpness) / 100.f;
 
-            if (!m_isSharpenOnly) {
-                FsrEasuCon(config->Const0,
-                           config->Const1,
-                           config->Const2,
-                           config->Const3,
-                           static_cast<AF1>(inputWidth),
-                           static_cast<AF1>(inputHeight),
-                           static_cast<AF1>(inputWidth),
-                           static_cast<AF1>(inputHeight),
-                           static_cast<AF1>(outputWidth),
-                           static_cast<AF1>(outputHeight));
+            if (inputWidth != m_cachedInputWidth || inputHeight != m_cachedInputHeight ||
+                outputWidth != m_cachedOutputWidth || outputHeight != m_cachedOutputHeight ||
+                sharpness != m_cachedSharpness) {
+                if (!m_isSharpenOnly) {
+                    FsrEasuCon(config->Const0,
+                               config->Const1,
+                               config->Const2,
+                               config->Const3,
+                               static_cast<AF1>(inputWidth),
+                               static_cast<AF1>(inputHeight),
+                               static_cast<AF1>(inputWidth),
+                               static_cast<AF1>(inputHeight),
+                               static_cast<AF1>(outputWidth),
+                               static_cast<AF1>(outputHeight));
+                }
+
+                // TODO: HDR support may require config.Const4[3] = hdr ? 1 : 0 instead of a shader define.
+                const auto attenuation = 1.f - AClampF1(sharpness, 0, 1);
+                FsrRcasCon(config->Const4, static_cast<AF1>(attenuation));
+
+                m_configBuffer->uploadData(config, sizeof(*config));
+                m_cachedInputWidth = inputWidth;
+                m_cachedInputHeight = inputHeight;
+                m_cachedOutputWidth = outputWidth;
+                m_cachedOutputHeight = outputHeight;
+                m_cachedSharpness = sharpness;
             }
-
-            const auto attenuation = 1.f - AClampF1(sharpness, 0, 1);
-            FsrRcasCon(config->Const4, static_cast<AF1>(attenuation));
-
-            // TODO:
-            // The AMD FSR sample is using a value in the constant buffer to correct the output color accordingly.
-            // We're replacing the constant with a shader compilation define because the project code is not HDR
-            // aware yet, When we'll be supporting HDR, we might need to change the implementation back to something
-            // like:
-            //
-            // config.Const4[3] = hdr ? 1 : 0;
-
-            // TODO: We can use an IShaderBuffer cache per swapchain and avoid this every frame.
-            m_configBuffer->uploadData(config, sizeof(*config));
 
             // This value is the image region dimension that each thread group of the FSR shader operates on
             const auto threadGroupWorkRegionDim = 16u;
@@ -148,6 +149,8 @@ namespace {
 
       private:
         void initializeScaler() {
+            m_cachedSharpness = -1.f;
+
             const auto shadersDir = dllHome / "shaders";
             const auto shaderFile = shadersDir / "FSR.hlsl";
 
@@ -179,6 +182,12 @@ namespace {
         std::shared_ptr<IComputeShader> m_shaderEASU;
         std::shared_ptr<IComputeShader> m_shaderRCAS;
         std::shared_ptr<IShaderBuffer> m_configBuffer;
+
+        uint32_t m_cachedInputWidth{0};
+        uint32_t m_cachedInputHeight{0};
+        uint32_t m_cachedOutputWidth{0};
+        uint32_t m_cachedOutputHeight{0};
+        float m_cachedSharpness{-1.f};
     };
 
 } // namespace

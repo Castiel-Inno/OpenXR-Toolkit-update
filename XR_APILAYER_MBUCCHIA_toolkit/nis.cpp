@@ -76,29 +76,45 @@ namespace {
             const auto outputHeight = output->getInfo().height;
             const float sharpness = m_configManager->getValue(SettingSharpness) / 100.f;
 
-            if (!m_isSharpenOnly) {
-                NVScalerUpdateConfig(*config,
-                                     sharpness,
-                                     0,
-                                     0,
-                                     inputWidth,
-                                     inputHeight,
-                                     inputWidth,
-                                     inputHeight,
-                                     0,
-                                     0,
-                                     outputWidth,
-                                     outputHeight,
-                                     outputWidth,
-                                     outputHeight,
-                                     NISHDRMode::None);
-            } else {
-                NVSharpenUpdateConfig(
-                    *config, sharpness, 0, 0, inputWidth, inputHeight, inputWidth, inputHeight, 0, 0, NISHDRMode::None);
+            if (inputWidth != m_cachedInputWidth || inputHeight != m_cachedInputHeight ||
+                outputWidth != m_cachedOutputWidth || outputHeight != m_cachedOutputHeight ||
+                sharpness != m_cachedSharpness) {
+                if (!m_isSharpenOnly) {
+                    NVScalerUpdateConfig(*config,
+                                         sharpness,
+                                         0,
+                                         0,
+                                         inputWidth,
+                                         inputHeight,
+                                         inputWidth,
+                                         inputHeight,
+                                         0,
+                                         0,
+                                         outputWidth,
+                                         outputHeight,
+                                         outputWidth,
+                                         outputHeight,
+                                         NISHDRMode::None);
+                } else {
+                    NVSharpenUpdateConfig(*config,
+                                         sharpness,
+                                         0,
+                                         0,
+                                         inputWidth,
+                                         inputHeight,
+                                         inputWidth,
+                                         inputHeight,
+                                         0,
+                                         0,
+                                         NISHDRMode::None);
+                }
+                m_configBuffer->uploadData(config, sizeof(*config));
+                m_cachedInputWidth = inputWidth;
+                m_cachedInputHeight = inputHeight;
+                m_cachedOutputWidth = outputWidth;
+                m_cachedOutputHeight = outputHeight;
+                m_cachedSharpness = sharpness;
             }
-
-            // TODO: We can use an IShaderBuffer cache per swapchain and avoid this every frame.
-            m_configBuffer->uploadData(config, sizeof(*config));
 
             const std::array<unsigned int, 3> threadGroups = {
                 (unsigned int)std::ceil(outputWidth / float(m_optimalBlockWidth)),
@@ -121,6 +137,8 @@ namespace {
 
       private:
         void initializeScaler() {
+            m_cachedSharpness = -1.f;
+
             const auto shadersDir = dllHome / "shaders";
             const auto shaderFile = shadersDir / "NIS.hlsl";
 
@@ -207,6 +225,12 @@ namespace {
         std::shared_ptr<IShaderBuffer> m_configBuffer;
         std::shared_ptr<ITexture> m_coefScale;
         std::shared_ptr<ITexture> m_coefUSM;
+
+        uint32_t m_cachedInputWidth{0};
+        uint32_t m_cachedInputHeight{0};
+        uint32_t m_cachedOutputWidth{0};
+        uint32_t m_cachedOutputHeight{0};
+        float m_cachedSharpness{-1.f};
     };
 
 } // namespace

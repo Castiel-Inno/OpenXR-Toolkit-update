@@ -280,8 +280,16 @@ namespace {
                         it = m_shadingRateMask.erase(it);
 
                         if (m_NvShadingRateResources.views.size()) {
-                            // TODO: Leak NVAPI resources for now, since there is an occasional crash.
-                            LeakNVAPIResource(index);
+                            // Defer NVAPI release to after flushContext() so the GPU is guaranteed
+                            // done with these resources before Release() is called.
+                            PendingNvAPIRelease pending;
+                            pending.views = std::move(m_NvShadingRateResources.views[index]);
+                            pending.viewDoubleWide =
+                                std::move(m_NvShadingRateResources.viewsDoubleWide[index]);
+                            pending.viewTextureArray =
+                                std::move(m_NvShadingRateResources.viewsTextureArray[index]);
+                            m_pendingNvAPIRelease.push_back(std::move(pending));
+
                             m_NvShadingRateResources.views.erase(m_NvShadingRateResources.views.begin() + index);
                             m_NvShadingRateResources.viewsDoubleWide.erase(
                                 m_NvShadingRateResources.viewsDoubleWide.begin() + index);
@@ -309,6 +317,8 @@ namespace {
 
             m_device->restoreContext();
             m_device->flushContext(false, false);
+            // GPU is done — safe to Release() NVAPI views that were evicted this frame.
+            m_pendingNvAPIRelease.clear();
             m_device->unblockCallbacks();
 
             m_renderScales.clear();
@@ -1004,6 +1014,12 @@ namespace {
             }
         }
 
+        struct PendingNvAPIRelease {
+            std::array<ComPtr<ID3D11NvShadingRateResourceView>, ViewCount + 1> views;
+            ComPtr<ID3D11NvShadingRateResourceView> viewDoubleWide;
+            ComPtr<ID3D11NvShadingRateResourceView> viewTextureArray;
+        };
+
         bool isVariableRateShadingCandidate(const XrSwapchainCreateInfo& info, bool& isDoubleWide) {
             TraceLoggingWrite(g_traceProvider,
                               "IsVariableRateShadingCandidate",
@@ -1138,6 +1154,8 @@ namespace {
         // We use a constant table and a varying shading rate texture filled with a compute shader.
         inline static NV_D3D11_VIEWPORT_SHADING_RATE_DESC
             m_nvRates[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
+
+        std::vector<PendingNvAPIRelease> m_pendingNvAPIRelease;
 
         bool m_isCapturing{false};
         uint32_t m_captureID{0};

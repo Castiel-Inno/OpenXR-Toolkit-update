@@ -1913,12 +1913,30 @@ namespace {
         }
 
         void setMipMapBias(config::MipMapBias biasing, float bias = 0.f) override {
-            // TODO: Implement mip-map bias.
+            m_mipMapBiasingType = biasing;
+            m_mipMapBias = bias;
+
+            if (!m_allowInterceptor || !g_original_ID3D12Device_CreateSampler) {
+                return;
+            }
+
+            // Recreate all tracked game samplers with the updated bias.
+            std::unique_lock lock(m_samplerDescsLock);
+            for (const auto& [handlePtr, originalDesc] : m_samplerDescs) {
+                D3D12_CPU_DESCRIPTOR_HANDLE handle{handlePtr};
+                D3D12_SAMPLER_DESC desc = originalDesc;
+                if (biasing != config::MipMapBias::Off && shouldBiasSampler(desc.Filter, biasing)) {
+                    desc.MipLODBias += bias;
+                    desc.MinLOD -= std::ceilf(bias);
+                    m_numBiasedSamplersThisFrame++;
+                }
+                // Bypass the hook to avoid re-tracking.
+                g_original_ID3D12Device_CreateSampler(m_realDevice.Get(), &desc, handle);
+            }
         }
 
         uint32_t getNumBiasedSamplersThisFrame() const override {
-            // TODO: Implement mip-map bias.
-            return 0;
+            return std::exchange(m_numBiasedSamplersThisFrame, 0);
         }
 
         void resolveQueries() override {
@@ -2003,6 +2021,11 @@ namespace {
                                20,
                                hooked_ID3D12Device_CreateRenderTargetView,
                                g_original_ID3D12Device_CreateRenderTargetView);
+            DetourMethodAttach(get(m_realDevice),
+                               // Method offset is 7 + method index (0-based) for ID3D12Device.
+                               22,
+                               hooked_ID3D12Device_CreateSampler,
+                               g_original_ID3D12Device_CreateSampler);
             DetourMethodAttach(get(realContext),
                                // Method offset is 10 + method index (0-based) for ID3D12GraphicsCommandList.
                                16,
@@ -2024,6 +2047,11 @@ namespace {
                                20,
                                hooked_ID3D12Device_CreateRenderTargetView,
                                g_original_ID3D12Device_CreateRenderTargetView);
+            DetourMethodDetach(get(m_realDevice),
+                               // Method offset is 7 + method index (0-based) for ID3D12Device.
+                               22,
+                               hooked_ID3D12Device_CreateSampler,
+                               g_original_ID3D12Device_CreateSampler);
             DetourMethodDetach(get(realContext),
                                // Method offset is 10 + method index (0-based) for ID3D12GraphicsCommandList.
                                16,
@@ -2036,6 +2064,9 @@ namespace {
         // Initialize the resources needed for dispatchShader() and related calls.
         void initializeShadingResources() {
             {
+                // Block the sampler hook so internal toolkit samplers are never mip-biased.
+                m_blockEvents.store(true);
+
                 D3D12_SAMPLER_DESC desc;
                 ZeroMemory(&desc, sizeof(desc));
                 desc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -2054,6 +2085,8 @@ namespace {
                 desc.MaxLOD = D3D12_MIP_LOD_BIAS_MAX;
                 m_samplerHeap.allocate(m_samplers[to_integral(SamplerType::LinearClamp)]);
                 m_device->CreateSampler(&desc, m_samplers[to_integral(SamplerType::LinearClamp)]);
+
+                m_blockEvents.store(false);
             }
             {
                 ComPtr<ID3DBlob> errors;
@@ -2341,6 +2374,12 @@ namespace {
         CopyTextureEvent m_copyTextureEvent;
         std::atomic<bool> m_blockEvents{false};
 
+        config::MipMapBias m_mipMapBiasingType{config::MipMapBias::Off};
+        float m_mipMapBias{0.f};
+        mutable uint32_t m_numBiasedSamplersThisFrame{0};
+        std::unordered_map<SIZE_T, D3D12_SAMPLER_DESC> m_samplerDescs;
+        std::mutex m_samplerDescsLock;
+
         std::map<D3D12_CPU_DESCRIPTOR_HANDLE,
                  std::pair<ID3D12Resource*, D3D12_RESOURCE_DESC>,
                  decltype(descriptorCompare)>
@@ -2392,7 +2431,44 @@ namespace {
             }
         }
 
+        static bool shouldBiasSampler(D3D12_FILTER filter, config::MipMapBias biasing) {
+            return biasing == config::MipMapBias::All || filter == D3D12_FILTER_ANISOTROPIC ||
+                   filter == D3D12_FILTER_COMPARISON_ANISOTROPIC ||
+                   filter == D3D12_FILTER_MINIMUM_ANISOTROPIC ||
+                   filter == D3D12_FILTER_MAXIMUM_ANISOTROPIC;
+        }
+
         static inline D3D12Device* g_instance = nullptr;
+
+        DECLARE_DETOUR_FUNCTION(static void,
+                                STDMETHODCALLTYPE,
+                                ID3D12Device_CreateSampler,
+                                ID3D12Device* Device,
+                                const D3D12_SAMPLER_DESC* pDesc,
+                                D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) {
+            assert(g_instance);
+
+            if (!g_instance->m_blockEvents) {
+                ComPtr<ID3D12Device> device;
+                if (SUCCEEDED(Device->QueryInterface(IID_PPV_ARGS(set(device)))) &&
+                    device == g_instance->m_realDevice) {
+                    std::unique_lock lock(g_instance->m_samplerDescsLock);
+                    g_instance->m_samplerDescs[DestDescriptor.ptr] = *pDesc;
+                }
+            }
+
+            D3D12_SAMPLER_DESC biasedDesc = *pDesc;
+            if (!g_instance->m_blockEvents &&
+                g_instance->m_mipMapBiasingType != config::MipMapBias::Off &&
+                shouldBiasSampler(pDesc->Filter, g_instance->m_mipMapBiasingType)) {
+                biasedDesc.MipLODBias += g_instance->m_mipMapBias;
+                biasedDesc.MinLOD -= std::ceilf(g_instance->m_mipMapBias);
+                g_instance->m_numBiasedSamplersThisFrame++;
+            }
+
+            assert(g_original_ID3D12Device_CreateSampler);
+            g_original_ID3D12Device_CreateSampler(Device, &biasedDesc, DestDescriptor);
+        }
 
         DECLARE_DETOUR_FUNCTION(static void,
                                 STDMETHODCALLTYPE,

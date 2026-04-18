@@ -1255,8 +1255,7 @@ namespace {
                                          100,
                                          MenuEntry::FmtPercent});
 
-                // TODO: Mip-map biasing is only supported on D3D11.
-                if (m_device->getApi() == Api::D3D11) {
+                {
                     MenuGroup mipmappingGroup(this, [&] { return getCurrentScaling() != 100; });
                     m_menuEntries.push_back({MenuIndent::SubGroupIndent,
                                              "Mip-map bias",
