@@ -51,6 +51,8 @@ namespace {
 
         void beginSession(XrSession session) override {
             m_session = session;
+            m_hasSmoothedGaze = false;
+            m_lastGazeTime = 0;
 
             // Create a reference space.
             {
@@ -129,15 +131,33 @@ namespace {
                 m_valid = GetProjectedGaze(eyeInViewSpace, projectedPoint, m_gaze);
 
                 if (m_valid) {
-                    m_eyeGazeState.leftPoint.x = m_gaze[0].x;
-                    m_eyeGazeState.leftPoint.y = m_gaze[0].y;
-                    m_eyeGazeState.rightPoint.x = m_gaze[1].x;
-                    m_eyeGazeState.rightPoint.y = m_gaze[1].y;
+                    // Apply exponential moving average to reduce jitter on the DFR mask.
+                    // tau=30ms: at 90fps (~11ms/frame) alpha≈0.31, good balance of responsiveness vs stability.
+                    constexpr float kSmoothingTau = 0.030f;
+                    if (m_hasSmoothedGaze && m_lastGazeTime != 0) {
+                        const float dt = (m_frameTime - m_lastGazeTime) * 1e-9f;
+                        const float alpha = 1.f - std::expf(-dt / kSmoothingTau);
+                        for (uint32_t eye = 0; eye < ViewCount; eye++) {
+                            m_smoothedGaze[eye].x = alpha * m_gaze[eye].x + (1.f - alpha) * m_smoothedGaze[eye].x;
+                            m_smoothedGaze[eye].y = alpha * m_gaze[eye].y + (1.f - alpha) * m_smoothedGaze[eye].y;
+                        }
+                    } else {
+                        for (uint32_t eye = 0; eye < ViewCount; eye++) {
+                            m_smoothedGaze[eye] = m_gaze[eye];
+                        }
+                        m_hasSmoothedGaze = true;
+                    }
+                    m_lastGazeTime = m_frameTime;
+
+                    m_eyeGazeState.leftPoint.x = m_smoothedGaze[0].x;
+                    m_eyeGazeState.leftPoint.y = m_smoothedGaze[0].y;
+                    m_eyeGazeState.rightPoint.x = m_smoothedGaze[1].x;
+                    m_eyeGazeState.rightPoint.y = m_smoothedGaze[1].y;
                 }
             }
 
             for (uint32_t eye = 0; eye < ViewCount; eye++) {
-                gaze[eye] = m_gaze[eye];
+                gaze[eye] = m_hasSmoothedGaze ? m_smoothedGaze[eye] : m_gaze[eye];
             }
 
             return true;
@@ -159,7 +179,10 @@ namespace {
         XrActionSet m_eyeTrackerActionSet{XR_NULL_HANDLE};
 
         mutable XrVector2f m_gaze[ViewCount];
+        mutable XrVector2f m_smoothedGaze[ViewCount]{};
         mutable bool m_valid{false};
+        mutable bool m_hasSmoothedGaze{false};
+        mutable XrTime m_lastGazeTime{0};
         mutable EyeGazeState m_eyeGazeState{};
     };
 
