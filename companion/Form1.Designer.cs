@@ -63,6 +63,7 @@ namespace companion
             this.licences = new System.Windows.Forms.LinkLabel();
             this.screenshotFormat = new System.Windows.Forms.ComboBox();
             this.traceButton = new System.Windows.Forms.Button();
+            this.deleteConfigButton = new System.Windows.Forms.Button();
             this.label13 = new System.Windows.Forms.Label();
             this.appList = new System.Windows.Forms.CheckedListBox();
             this.label14 = new System.Windows.Forms.Label();
@@ -83,7 +84,7 @@ namespace companion
             // reportIssuesLink
             // 
             this.reportIssuesLink.AutoSize = true;
-            this.reportIssuesLink.Location = new System.Drawing.Point(10, 1073);
+            this.reportIssuesLink.Location = new System.Drawing.Point(10, 1131);
             this.reportIssuesLink.Name = "reportIssuesLink";
             this.reportIssuesLink.Size = new System.Drawing.Size(107, 20);
             this.reportIssuesLink.TabIndex = 31;
@@ -106,7 +107,7 @@ namespace companion
             // checkUpdatesLink
             // 
             this.checkUpdatesLink.AutoSize = true;
-            this.checkUpdatesLink.Location = new System.Drawing.Point(411, 1073);
+            this.checkUpdatesLink.Location = new System.Drawing.Point(411, 1131);
             this.checkUpdatesLink.Name = "checkUpdatesLink";
             this.checkUpdatesLink.Size = new System.Drawing.Size(191, 20);
             this.checkUpdatesLink.TabIndex = 33;
@@ -165,7 +166,7 @@ namespace companion
             // 
             // openLog
             // 
-            this.openLog.Location = new System.Drawing.Point(27, 943);
+            this.openLog.Location = new System.Drawing.Point(27, 1001);
             this.openLog.Name = "openLog";
             this.openLog.Size = new System.Drawing.Size(225, 48);
             this.openLog.TabIndex = 28;
@@ -175,7 +176,7 @@ namespace companion
             // 
             // openScreenshots
             // 
-            this.openScreenshots.Location = new System.Drawing.Point(280, 943);
+            this.openScreenshots.Location = new System.Drawing.Point(280, 1001);
             this.openScreenshots.Name = "openScreenshots";
             this.openScreenshots.Size = new System.Drawing.Size(225, 48);
             this.openScreenshots.TabIndex = 29;
@@ -369,7 +370,7 @@ namespace companion
             // licences
             // 
             this.licences.AutoSize = true;
-            this.licences.Location = new System.Drawing.Point(466, 1040);
+            this.licences.Location = new System.Drawing.Point(466, 1098);
             this.licences.Name = "licences";
             this.licences.Size = new System.Drawing.Size(139, 20);
             this.licences.TabIndex = 32;
@@ -395,7 +396,7 @@ namespace companion
             // 
             // traceButton
             // 
-            this.traceButton.Location = new System.Drawing.Point(27, 998);
+            this.traceButton.Location = new System.Drawing.Point(27, 1056);
             this.traceButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.traceButton.Name = "traceButton";
             this.traceButton.Size = new System.Drawing.Size(225, 48);
@@ -424,7 +425,19 @@ namespace companion
             this.appList.Size = new System.Drawing.Size(553, 142);
             this.appList.TabIndex = 27;
             this.appList.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.appList_ItemCheck);
-            // 
+            this.appList.SelectedIndexChanged += new System.EventHandler(this.appList_SelectedIndexChanged);
+            //
+            // deleteConfigButton
+            //
+            this.deleteConfigButton.Location = new System.Drawing.Point(27, 936);
+            this.deleteConfigButton.Name = "deleteConfigButton";
+            this.deleteConfigButton.Size = new System.Drawing.Size(553, 48);
+            this.deleteConfigButton.TabIndex = 34;
+            this.deleteConfigButton.Text = "Delete selected configuration";
+            this.deleteConfigButton.UseVisualStyleBackColor = true;
+            this.deleteConfigButton.Enabled = false;
+            this.deleteConfigButton.Click += new System.EventHandler(this.deleteConfigButton_Click);
+            //
             // label14
             // 
             this.label14.AutoSize = true;
@@ -459,8 +472,9 @@ namespace companion
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(616, 1098);
+            this.ClientSize = new System.Drawing.Size(616, 1156);
             this.Controls.Add(this.screenshotEye);
+            this.Controls.Add(this.deleteConfigButton);
             this.Controls.Add(this.label14);
             this.Controls.Add(this.appList);
             this.Controls.Add(this.label13);
@@ -541,6 +555,7 @@ namespace companion
         private System.Windows.Forms.LinkLabel licences;
         private System.Windows.Forms.ComboBox screenshotFormat;
         private System.Windows.Forms.Button traceButton;
+        private System.Windows.Forms.Button deleteConfigButton;
         private System.Windows.Forms.Label label13;
         private System.Windows.Forms.CheckedListBox appList;
         private System.Windows.Forms.Label label14;

@@ -776,6 +776,39 @@ namespace companion
             }
         }
 
+        private void appList_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            deleteConfigButton.Enabled = appList.SelectedIndex >= 0;
+        }
+
+        private void deleteConfigButton_Click(object sender, EventArgs e)
+        {
+            if (appList.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            var appName = appList.Items[appList.SelectedIndex].ToString().Split('(')[0].Trim();
+            if (MessageBox.Show(this, "Delete all settings for \"" + appName + "\"?\n\nThis cannot be undone.", "Confirm deletion", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(RegPrefix + "\\" + appName, false);
+            }
+            catch (Exception)
+            {
+                MessageBox.Show(this, "Failed to delete registry key.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var index = appList.SelectedIndex;
+            appList.Items.RemoveAt(index);
+            deleteConfigButton.Enabled = false;
+        }
+
         private void appList_ItemCheck(object sender, ItemCheckEventArgs e)
         {
             if (loading)
